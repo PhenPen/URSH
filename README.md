@@ -98,23 +98,25 @@ Requests to any other path return `404 Not Found`. A non-GET method on `/health`
 | --- | --- |
 | `go.mod` | Module path and Go version. No dependencies yet. |
 | `main.go` | Server setup, routing, and handler functions. |
+| `main_test.go` | Handler and routing tests using `net/http/httptest`. |
 | `.gitignore` | Build artifacts and local notes that must stay out of history. |
 
 ## Tests
 
-There are no tests yet. The health handler is tested in the next commit.
+Handler tests use `net/http/httptest`, so no live server or real port is needed. They cover the health handler's status, headers and body, plus the router's handling of `GET`, `HEAD`, a rejected `POST`, and an unknown path:
 
 ```powershell
 go test ./...
 ```
 
-reports `no test files` at this point.
+The race detector requires cgo and a C compiler; the current machine has no `gcc`, so `go test -race` is not runnable here yet. See Notes.
 
 ## Notes and limitations
 
 - The port is a constant in `main.go`. Configuration for environments is deferred until the operational readiness stage.
 - There is no graceful shutdown yet. Add it when the process has resources worth closing, not before.
 - The health endpoint reports only that the process is answering. It does not check storage, because no storage exists yet.
+- `go test -race` cannot run on the current development machine: the race detector requires cgo and a C compiler, and `gcc` is not installed. Install MinGW-w64 and run with `CGO_ENABLED=1` before Stage 3 introduces concurrency.
 - The module path is deliberately local (`ursh`). If the project is published, the `go.mod` module line and its import paths must be renamed to the real repository path.
 - Nothing is deployed, containerized, or hardened for public traffic. Public URL shorteners can be abused for phishing, so abuse prevention and rate limiting are required before exposing it publicly.
 - Markdown files are ignored by default in `.gitignore`. Only explicitly allowlisted files such as this README are tracked; local notes and the project specification stay out of history.
