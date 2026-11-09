@@ -1,0 +1,19 @@
+# Markdown is local by default; only public project docs are tracked.
+*.md
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!SECURITY.md
+!SUPPORT.md
+!GOVERNANCE.md
+
+# Local specification and learner/agent progress notes.
+url-shortener-prd.md
+docs/
+
+# Go build and test artifacts.
+*.exe
+/URSH
+*.test
+coverage.out
