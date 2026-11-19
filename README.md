@@ -6,7 +6,7 @@ A URL shortener written in Go, built stage by stage as a learning project.
 
 The finished service will accept a long URL, return a short code for it, and redirect visitors from that short code to the original destination.
 
-The repository is currently at Stage 1. It runs an HTTP server on port 8080 with sensible timeouts and exposes a health endpoint. There is no URL creation, validation, short-code generation, or storage yet. Each stage is implemented, tested, and reviewed before the next one starts.
+The repository is currently at Stage 2. It runs an HTTP server on port 8080 with a health endpoint, and it contains the two domain pieces a shortener needs: a destination URL validator and a cryptographically random short-code generator. Nothing calls them over HTTP yet; the creation API arrives in Stage 3.
 
 ## Why it exists
 
@@ -22,9 +22,11 @@ Working now:
 - An HTTP server using `net/http`, listening on `:8080`.
 - Server timeouts for reading, writing, and idle connections.
 - `GET /health`, which returns `200 OK` with the body `ok`.
+- Destination URL validation: absolute `http` or `https`, host required, at most 2048 bytes.
+- Random 7-character base62 short codes from `crypto/rand`.
 - A startup log line and a fatal error if the listener fails.
 
-Planned, in stage order: URL creation API, in-memory redirects, persistent storage, refactoring, operational readiness, and measurement-driven performance work. Nothing from that list exists yet.
+Planned, in stage order: URL creation API, in-memory redirects, persistent storage, refactoring, operational readiness, and measurement-driven performance work.
 
 ## Requirements
 
@@ -76,6 +78,24 @@ Stop the server with Ctrl+C.
 
 Requests to any other path return `404 Not Found`. A non-GET method on `/health`, such as `POST`, returns `405 Method Not Allowed`.
 
+## Validation and short-code rules
+
+Destination URLs, enforced by `ValidateDestination`:
+
+- Must parse as an absolute URL.
+- Only the `http` and `https` schemes are accepted, compared case-insensitively.
+- A non-empty host is required.
+- Leading and trailing whitespace is trimmed before validation.
+- Maximum length is 2048 bytes after trimming.
+- The destination is never fetched, crawled, or previewed. This service redirects, it does not proxy.
+
+Short codes, produced by `NewCode`:
+
+- Alphabet: `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`, 62 symbols, no punctuation to escape in a URL path.
+- Length: 7 characters, so 62^7 = 3,521,614,606,208 possible codes.
+- Entropy: `crypto/rand` through `rand.Int`, which avoids the modulo bias that `randomByte % 62` would introduce.
+- Collision retry is not implemented yet. Generation is random; rejecting a duplicate needs a store to check against, so bounded retries arrive with in-memory storage in Stage 3.
+
 ## How it works
 
 `main.go` builds an `http.Server` value rather than calling the package-level `http.ListenAndServe`. That matters because the `http.Server` struct is where timeouts live; the convenience function has none.
@@ -98,12 +118,18 @@ Requests to any other path return `404 Not Found`. A non-GET method on `/health`
 | --- | --- |
 | `go.mod` | Module path and Go version. No dependencies yet. |
 | `main.go` | Server setup, routing, and handler functions. |
+| `url.go` | `ShortURL` type, validation rules, and validation errors. |
+| `code.go` | Short-code alphabet, length, and generation. |
 | `main_test.go` | Handler and routing tests using `net/http/httptest`. |
+| `url_test.go` | Table-driven validation tests, including boundary lengths. |
+| `code_test.go` | Alphabet, shape, determinism, and entropy-failure tests. |
 | `.gitignore` | Build artifacts and local notes that must stay out of history. |
 
 ## Tests
 
-Handler tests use `net/http/httptest`, so no live server or real port is needed. They cover the health handler's status, headers and body, plus the router's handling of `GET`, `HEAD`, a rejected `POST`, and an unknown path:
+Handler tests use `net/http/httptest`, so no live server or real port is needed. They cover the health handler's status, headers and body, plus the router's handling of `GET`, `HEAD`, a rejected `POST`, and an unknown path.
+
+Validation is table-driven: accepted forms, trimming, the exact length boundary and one byte over it, plus each rejection reason. Generation is tested three ways: shape over 200 real codes, exact output from fixed random bytes, and error propagation from a failing entropy source.
 
 ```powershell
 go test ./...
